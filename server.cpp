@@ -20,8 +20,12 @@ using namespace std;
 
 #define str_size  256
 
-int main(){
-    
+int main(int argc, char** argv){
+    //1. Make select run.
+    //2. Input Ip, port # and number of maximum clients from command line--Done!
+    //3. Forward receive messages from clients and forward them.
+    //4. Only accept clint with JOIN SBCP msg and unique username.
+    //5. Clean client's resources if left.
     
     
     //==============initialize socket==================//
@@ -31,6 +35,7 @@ int main(){
         cout << "Could not establish connection" << endl;
         exit(0);
     }
+    
     int reuse = 1;
     if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(int)) < 0){
         cout << "setsockopt(SO_REUSEADDR) failed" << endl;
@@ -41,9 +46,11 @@ int main(){
     //============bind socket to ip and port===============//
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    server_addr.sin_port = htons(12345);
+    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
+    server_addr.sin_port = htons(atoi(argv[2]));
     socklen_t server_addr_size = sizeof(server_addr);
+    
+    int maxClients=atoi(argv[3]);
     
     if( bind(server_socket, (struct sockaddr* ) &server_addr, server_addr_size) < 0){
         cout << "Unable to bind socket." << endl;
@@ -63,50 +70,72 @@ int main(){
     char received_str[str_size]; 
     
     //====Now for this assignment, we use select to wait for event=======//
-    fd_set master;
-    FD_ZERO (&master);
-    FD_SET(server_socket, &master);
+    fd_set master;// Create a master set of file discriptor.
+    fd_set read_fds;  // temp file descriptor list for select()
+    FD_ZERO (&master);// Clear all entries in set.
+    FD_ZERO (&read_fds);// Clear all entries in set.
+    FD_SET(server_socket, &master); // Add server_socket to master set.
+    int fdmax = server_socket; //numfds should be highest file discriptor + 1
+    
+    int newclient = 0; //newly accepted socket descriptor
+    struct sockaddr_storage clientaddr; // client address
+    int addrlen = 0;
     
     while(true){
-        fd_set copy = master;
+        read_fds = master; // Copy master.
         
-        int socketnum = select(0, &copy, nullptr, nullptr, nullptr);
+        int socketnum = select(fdmax + 1, &read_fds, NULL, NULL, NULL);
         
-        for(int i = 0; i < socketnum; i++){
+        if(socketnum == -1){
+            cout << "Error occurs when selecting." << endl;
+            cout << "Error number " << (int) errno << endl;
+            exit(0);
+        }
+        
+        for(int i = 0; i <= fdmax; i++){
             
-            int sock = copy.fd_array[i];
+            if(FD_ISSET(i, &read_fds)){//Get one 
             
-            if(sock = server_socket){
-                //Accept a new connection
-                int client = accept(server_addr, nullptr, nullptr);
-                
-                //Add new connection to the list of connected clients
-                FD_SET(client, &master);
-                
-                //Send welcome message to the connected client
-                string welcomeMSG = "Welcome to the Chat Server";
-                send(client, welcomeMSG.c_str(), welcomeMSG.size() + 1, 0);
-            } else{
-                char buf[4096];
-                memset(buf, 0, 4096);
-                //Receive message
-                int bytes = recv(sock, buf, 4096,0);
-                if(bytes == 0){
-                    //Close the socket
-                    close(sock);
-                    FD_CLR(sock, &master);
-                }else{
-                    //Send messages to other clients
-                    for(int i = 0; i < master.fd_count; i++){
-                        int outSock = master.fd_array[i];
-                        if(outSock != server_socket && outSock != sock){
-                            send = (outSock, buf, bytes, 0);
+                if(i = server_socket){
+                    //Accept a new connection
+                    addrlen = sizeof clientaddr;
+                    newclient = accept(server_addr, (struct sockaddr *)&clientaddr, &addrlen);
+                    
+                    if(newclient == -1){
+                        cout<< "Error occurs when accepting new clients" <<endl;
+                        cout << "Error number " << (int) errno << endl;
+                        exit(0);
+                    }
+                    //Add new connection to the list of connected clients
+                    FD_SET(newclient, &master);
+                    
+                    //Send welcome message to the connected client
+                    string welcomeMSG = "Welcome to the Chat Server";
+                    send(newclient, welcomeMSG.c_str(), welcomeMSG.size() + 1, 0);
+                } else{
+                    char buf[4096];
+                    memset(buf, 0, 4096);
+                    //Receive message from ith descriptor in master
+                    int bytes = recv(newclient, buf, 4096,0);
+                    if(bytes == 0){
+                        //The client quit the chat server, close the socket
+                        close(newclient);
+                        FD_CLR(i, &master); //Remove from master set
+                    } else{
+                        //We got some data from end messages to other clients
+                        for(int j = 0; j < fdmax; j++){
+                            if(FD_ISSET(j, &master)){
+                                //Except the server and ourselves
+                                if(j != server_socket && j != i){
+                                    
+                                }
+                            }
                         }
                     }
-                }
-            }
-        }
-    }
+                }//End dealing with data from client
+            }//End got new connection
+        }//End loop through file descriptors
+    }//End of while loop
 
     return 0;
     
