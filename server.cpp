@@ -68,7 +68,44 @@ int main(){
     FD_SET(server_socket, &master);
     
     while(true){
-        fd_set 
+        fd_set copy = master;
+        
+        int socketnum = select(0, &copy, nullptr, nullptr, nullptr);
+        
+        for(int i = 0; i < socketnum; i++){
+            
+            int sock = copy.fd_array[i];
+            
+            if(sock = server_socket){
+                //Accept a new connection
+                int client = accept(server_addr, nullptr, nullptr);
+                
+                //Add new connection to the list of connected clients
+                FD_SET(client, &master);
+                
+                //Send welcome message to the connected client
+                string welcomeMSG = "Welcome to the Chat Server";
+                send(client, welcomeMSG.c_str(), welcomeMSG.size() + 1, 0);
+            } else{
+                char buf[4096];
+                memset(buf, 0, 4096);
+                //Receive message
+                int bytes = recv(sock, buf, 4096,0);
+                if(bytes == 0){
+                    //Close the socket
+                    close(sock);
+                    FD_CLR(sock, &master);
+                }else{
+                    //Send messages to other clients
+                    for(int i = 0; i < master.fd_count; i++){
+                        int outSock = master.fd_array[i];
+                        if(outSock != server_socket && outSock != sock){
+                            send = (outSock, buf, bytes, 0);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     return 0;
