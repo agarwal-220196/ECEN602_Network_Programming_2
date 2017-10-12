@@ -78,8 +78,9 @@ int main(int argc, char** argv){
     int fdmax = server_socket; //numfds should be highest file discriptor + 1
     
     int newclient = 0; //newly accepted socket descriptor
-    struct sockaddr_storage clientaddr; // client address
-    int addrlen = 0;
+    struct sockaddr_in clientaddr; // client address
+    int addrlen;
+    int bytes = 0; // Number of bytes received.
     
     while(true){
         read_fds = master; // Copy master.
@@ -104,10 +105,10 @@ int main(int argc, char** argv){
                     if(newclient == -1){
                         cout<< "Error occurs when accepting new clients" <<endl;
                         cout << "Error number " << (int) errno << endl;
-                        exit(0);
+                    }else {
+                        //Add new connection to the list of connected clients
+                        FD_SET(newclient, &master);
                     }
-                    //Add new connection to the list of connected clients
-                    FD_SET(newclient, &master);
                     
                     //Send welcome message to the connected client
                     string welcomeMSG = "Welcome to the Chat Server";
@@ -116,7 +117,7 @@ int main(int argc, char** argv){
                     char buf[4096];
                     memset(buf, 0, 4096);
                     //Receive message from ith descriptor in master
-                    int bytes = recv(newclient, buf, 4096,0);
+                    bytes = recv(newclient, buf, 4096,0);
                     if(bytes == 0){
                         //The client quit the chat server, close the socket
                         close(newclient);
@@ -127,10 +128,13 @@ int main(int argc, char** argv){
                             if(FD_ISSET(j, &master)){
                                 //Except the server and ourselves
                                 if(j != server_socket && j != i){
-                                    
-                                }
+                                    if(send(j, buf, bytes, 0) == -1){
+                                        cout << "Error occurs when broadcasting data!" << endl;
+                                        perror("send");
+                                    }//End of sending data
+                                }//End of broadcasting
                             }
-                        }
+                        }//End of loop through file descriptor
                     }
                 }//End dealing with data from client
             }//End got new connection
