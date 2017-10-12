@@ -17,7 +17,7 @@ struct SBCP_attribute{
 //Structure for SBCP message
 struct SBCP_message{
     struct SBCP_header header;
-    struct SBCP_attribute attribute[];
+    struct SBCP_attribute attribute[2];
 };
 //Structure for saving client's information
 struct SBCP_client_info{
