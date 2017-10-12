@@ -14,8 +14,14 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <errno.h>
+#include <netinet/in.h>
 
+// SBCP STRUCT
+#include "StructForSBCP.h"
 
 using namespace std;
 
-#define str_size  256
+//Read the message form SBCPmessage
+int getMessage(int sockfd){
+    
+}

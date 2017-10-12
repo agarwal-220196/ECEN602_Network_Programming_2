@@ -14,11 +14,25 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <errno.h>
+//include the header file 
+#include "SBCP.h"
 
+#define str_size  256
 
 using namespace std;
 
-#define str_size  256
+int clientNum = 0;
+struct SBCP_client_info *clients;
+
+bool check_user_name(char user_name[]){
+    for(int i = 0; i < clientNum; i++){
+        if(!strcmp(user_name,clients[i].username)){
+            return false;
+        }
+    }
+    return true;
+}
+
 
 int main(int argc, char* argv[]){
     //1. Make select run. --Done!
@@ -27,20 +41,25 @@ int main(int argc, char* argv[]){
     //4. Only accept clint with JOIN SBCP msg and unique username.
     //5. Clean client's resources if left.
     
+    //SBCP message
+    struct SBCP_message recvMsg, fwdMsg, Join_broadcast, Leave_broadcast;
+    struct SBCP_attribute client_attribute;
+    
     //Server's address info
     struct sockaddr_in server_addr;
     server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    server_addr.sin_port = htons(atoi(argv[2]));
-    //server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    //server_addr.sin_port = htons(12345);
+    //server_addr.sin_addr.s_addr = inet_addr(argv[1]);
+    //server_addr.sin_port = htons(atoi(argv[2]));
+    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    server_addr.sin_port = htons(12345);
     socklen_t server_addr_size = sizeof(server_addr);
     
-    int maxClients=atoi(argv[3]);
-    //int maxClients = 10;
+    //int maxClients=atoi(argv[3]);
+    int maxClients = 10;
     
-    char received_str[str_size]; //wolaila nihaoshaya么么哒 嘿嘿哈是呀
-    
+    char received_str[str_size]; 
+    char buf[4096];//Receive data from client
+
     fd_set master;// Create a master set of file discriptor.
     fd_set read_fds;  // temp file descriptor list for select()
     FD_ZERO (&master);// Clear all entries in set.
@@ -111,18 +130,18 @@ int main(int argc, char* argv[]){
                     }else {
                         //Add new connection to the list of connected clients
                         FD_SET(newclient, &master);
+                        if(newclient > fdmax){ //track max fd
+                            fdmax = newclient;
+                        }
                     }
                     
                     //Send welcome message to the connected client
                     string welcomeMSG = "Welcome to the Chat Server";
                     send(newclient, welcomeMSG.c_str(), welcomeMSG.size() + 1, 0);
                 } else{
-                    char buf[4096];
                     memset(buf, 0, 4096);
-                    //Receive message from ith descriptor in master
-                    bytes = recv(newclient, buf, 4096,0);
-                    if(bytes == 0){
-                        //The client quit the chat server, close the socket
+                    bytes = recv(newclient, buf, 4096,0); //Receive message from ith descriptor in master
+                    if(bytes == 0){  //The client quit the chat server, close the socket
                         close(newclient);
                         FD_CLR(i, &master); //Remove from master set
                     } else{
