@@ -78,8 +78,7 @@ int main(int argc, char** argv){
     int fdmax = server_socket; //numfds should be highest file discriptor + 1
     
     int newclient = 0; //newly accepted socket descriptor
-    struct sockaddr_in clientaddr; // client address
-    int addrlen;
+    struct sockaddr_in client_addr; // client address
     int bytes = 0; // Number of bytes received.
     
     while(true){
@@ -99,8 +98,8 @@ int main(int argc, char** argv){
             
                 if(i = server_socket){
                     //Accept a new connection
-                    addrlen = sizeof clientaddr;
-                    newclient = accept(server_addr, (struct sockaddr *)&clientaddr, &addrlen);
+                    socklen_t client_addr_size = sizeof(client_addr);
+                    newclient = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
                     
                     if(newclient == -1){
                         cout<< "Error occurs when accepting new clients" <<endl;
