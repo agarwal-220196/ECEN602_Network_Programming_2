@@ -20,13 +20,35 @@ using namespace std;
 
 #define str_size  256
 
-int main(int argc, char** argv){
-    //1. Make select run.
+int main(int argc, char* argv[]){
+    //1. Make select run. --Done!
     //2. Input Ip, port # and number of maximum clients from command line--Done!
-    //3. Forward receive messages from clients and forward them.
+    //3. Forward receive messages from clients and forward them.--Done!
     //4. Only accept clint with JOIN SBCP msg and unique username.
     //5. Clean client's resources if left.
     
+    //Server's address info
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
+    server_addr.sin_port = htons(atoi(argv[2]));
+    //server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    //server_addr.sin_port = htons(12345);
+    socklen_t server_addr_size = sizeof(server_addr);
+    
+    int maxClients=atoi(argv[3]);
+    //int maxClients = 10;
+    
+    char received_str[str_size]; //wolaila nihaoshaya么么哒 嘿嘿哈是呀
+    
+    fd_set master;// Create a master set of file discriptor.
+    fd_set read_fds;  // temp file descriptor list for select()
+    FD_ZERO (&master);// Clear all entries in set.
+    FD_ZERO (&read_fds);// Clear all entries in set.
+    
+    int newclient = 0; //newly accepted socket descriptor
+    struct sockaddr_in client_addr; // client address
+    int bytes = 0; // Number of bytes received.
     
     //==============initialize socket==================//
     int server_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -44,14 +66,6 @@ int main(int argc, char** argv){
     cout << "Server socket established." << endl;
     
     //============bind socket to ip and port===============//
-    struct sockaddr_in server_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    server_addr.sin_port = htons(atoi(argv[2]));
-    socklen_t server_addr_size = sizeof(server_addr);
-    
-    int maxClients=atoi(argv[3]);
-    
     if( bind(server_socket, (struct sockaddr* ) &server_addr, server_addr_size) < 0){
         cout << "Unable to bind socket." << endl;
         cout << "Error number " << (int) errno << endl;
@@ -59,7 +73,6 @@ int main(int argc, char** argv){
     }
     cout << "Socket binded." << endl;
     //=============listen to the client============//
-
     if(listen(server_socket, 10)< 0){
         cout << "Unable to find client." << endl;
         cout << "Error number " << (int) errno << endl;
@@ -67,19 +80,10 @@ int main(int argc, char** argv){
     }
     cout << "Listening to the cilent..." << endl;
 
-    char received_str[str_size]; 
-    
     //====Now for this assignment, we use select to wait for event=======//
-    fd_set master;// Create a master set of file discriptor.
-    fd_set read_fds;  // temp file descriptor list for select()
-    FD_ZERO (&master);// Clear all entries in set.
-    FD_ZERO (&read_fds);// Clear all entries in set.
+    
     FD_SET(server_socket, &master); // Add server_socket to master set.
     int fdmax = server_socket; //numfds should be highest file discriptor + 1
-    
-    int newclient = 0; //newly accepted socket descriptor
-    struct sockaddr_in client_addr; // client address
-    int bytes = 0; // Number of bytes received.
     
     while(true){
         read_fds = master; // Copy master.
@@ -122,7 +126,7 @@ int main(int argc, char** argv){
                         close(newclient);
                         FD_CLR(i, &master); //Remove from master set
                     } else{
-                        //We got some data from end messages to other clients
+                        //We got some data and send messages to other clients
                         for(int j = 0; j < fdmax; j++){
                             if(FD_ISSET(j, &master)){
                                 //Except the server and ourselves
