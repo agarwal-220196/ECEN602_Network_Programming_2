@@ -27,6 +27,8 @@ int readMessage(int sockfd){
     int status = 0;
     int nbytes=0;
     nbytes=read(sockfd,(struct SBCP_message *) &serverMessage,sizeof(serverMessage));
+    
+    //read the username and message
     if(serverMessage.header.type==3){
     	if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && (serverMessage.attribute[1].payload!=NULL || serverMessage.attribute[1].payload!='\0') && serverMessage.attribute[0].type==4 && serverMessage.attribute[1].type==2){     	
 		    cout<<serverMessage.attribute[1].payload<<" says: " <<serverMessage.attribute[0].payload<<endl;
@@ -34,6 +36,15 @@ int readMessage(int sockfd){
         status=0;
     }
     
+    //when username is used, set status to be 1
+    if(serverMessage.header.type==5){
+    	if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && serverMessage.attribute[0].type==1){
+            cout<<"Try another username!" <<endl;
+       }
+       status=1;
+    }
+    
+    //bonus feature
     if(serverMessage.header.type==6){
 	    if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && serverMessage.attribute[0].type==2){
            	cout<<serverMessage.attribute[0].payload<<" is now OFFLINE" <<endl;
@@ -72,16 +83,25 @@ void join(int sockfd, char* arg[]){
     // Sleep to allow Server to reply
     sleep(1);
     status = readMessage(sockfd); 
+    
+    //if username already used, close the socket.
     if(status == 1){
         close(sockfd);
+        exit(4);
         // sockfd=-1;
     }
 }
 
 //chat
 void send(int socket){
+    struct SBCP_header header;
+    header.vrsn = '3';
+    header.type = '4';//send
+    
     struct SBCP_message message;
     struct SBCP_attribute Attribute;
+    
+    message.header = header;
 
     int nread = 0;
     char temp[512];
@@ -99,7 +119,7 @@ void send(int socket){
 	        temp[nread] = '\0';
         }
     
-    	Attribute.type = 4;
+    	Attribute.type = 4;//message;
     	strcpy(Attribute.payload,temp);
     	message.attribute[0] = Attribute;
     	write(socket,(void *) &message,sizeof(message));

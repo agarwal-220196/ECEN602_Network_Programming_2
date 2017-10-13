@@ -24,6 +24,54 @@ using namespace std;
 int clientCount = 0;
 struct SBCP_client_info *clients; //assign memory to store SBCP_client_info array
 
+//send ACK to allow join of client
+void sendACK(int connfd){
+
+    struct SBCP_message ACK_msg;
+    char temp[180];
+
+    ACK_msg.header.vrsn=3;
+    ACK_msg.header.type=7;
+    ACK_msg.attribute[0].type = 4;
+
+    // Only works to '9'
+    temp[0] = (char)(((int)'0')+ clientCount);
+    temp[1] = ' ';
+    temp[2] = '\0';
+    //copy username to the list
+    for(int i =0; i<clientCount-1; i++)
+    {
+        strcat(temp,clients[i].username);
+        if(i != clientCount-2)
+        strcat(temp, ",");
+    }
+    ACK_msg.attribute[0].length = strlen(temp)+1;
+    strcpy(ACK_msg.attribute[0].payload, temp);
+
+    write(connfd,(void *) &ACK_msg,sizeof(ACK_msg));
+}
+
+//send NAK to client, to deny connection ( when username already joined)
+void sendNAK(int connfd){
+
+    struct SBCP_message NAK_msg;
+    char temp[180];
+
+    NAK_msg.header.vrsn =3;
+    NAK_msg.header.type =5;
+
+    NAK_msg.attribute[0].type = 1;
+
+    strcpy(temp,"Username already exists, try another one.");
+        
+    NAK_msg.attribute[0].length = strlen(temp);
+    strcpy(NAK_msg.attribute[0].payload, temp);
+
+    write(connfd,(void *) &NAK_msg,sizeof(NAK_msg));
+
+    close(connfd);
+
+}
 
 //check if username does not exist
 bool username_not_exist(char user_name[]){
@@ -45,7 +93,8 @@ bool isjoined(int client_fd){
     strcpy(user_name, join_msg_attribute.payload);
     if(!username_not_exist(user_name)) //If the client with this username is in chat room
     {
-        printf("\nClient already joined.");
+        cout << "Username already exists!" << endl;
+        sendNAK(client_fd);
         return true;
     }
     else //If client with this username has never joined chat room then let him join.
@@ -54,6 +103,7 @@ bool isjoined(int client_fd){
         clients[clientCount].fd = client_fd;
         clients[clientCount].clientCount = clientCount;
         clientCount += 1;
+        sendACK(client_fd);
     }
     return false;
 }
@@ -111,7 +161,6 @@ int main(int argc, char* argv[]){
     //============bind socket to ip and port===============//
     if( bind(server_socket, (struct sockaddr* ) &server_addr, server_addr_size) < 0){
         cout << "Unable to bind socket." << endl;
-        //cout << "Error number " << (int) errno << endl;
         perror("binding");
         exit(0);
     }
@@ -124,7 +173,6 @@ int main(int argc, char* argv[]){
     //=============listen to the client============//
     if(listen(server_socket, 10)< 0){
         cout << "Unable to find client." << endl;
-        //cout << "Error number " << (int) errno << endl;
         perror("listening");
         exit(0);
     }
@@ -178,7 +226,7 @@ int main(int argc, char* argv[]){
         	            	    if (FD_ISSET(j, &master)) 
         	            	    {
         	            	        // Except the server and itself
-        	            	        if (j != server_socket && j != i){
+        	            	        if (j != server_socket && j != newclient){
         	                    	    if ((write(j,(void *) &join_broadcast,sizeof(join_broadcast))) == -1){
         	                            	perror("broadcasting join message");
         	                            }
@@ -186,9 +234,6 @@ int main(int argc, char* argv[]){
         	                    }       
         	                }
                         } else {
-                            cout << "User with username "<< clients[clientCount-1].username <<" has already joined, try another username." << endl;
-                            
-                            
                             close(newclient);
                             fdmax = temp;
                             FD_CLR(newclient, &master);//clear newclient if username does not exist
@@ -204,9 +249,6 @@ int main(int argc, char* argv[]){
                                 if(clients[k].fd == i){
                                     leave_broadcast.attribute[0].type = 2;
                                     strcpy(leave_broadcast.attribute[0].payload, clients[k].username);
-                                    
-                                    //leave_broadcast.attribute[1].type = 2;
-                                    //strcpy(leave_broadcast.attribute[1].payload, clients[k].username);
                                 }
                             }
                             
@@ -220,7 +262,7 @@ int main(int argc, char* argv[]){
                                 //broadcasting
                                 if(FD_ISSET(j, &master)){
                                     //except the server and itself
-                                    if(j != server_socket && j != i){
+                                    if(j != server_socket && j != newclient){
                                         //send leaving msg
                                         if((write(j, (void*)&leave_broadcast, sizeof(leave_broadcast))) == -1){
                                             perror("broadcasting leaving msg");
@@ -249,8 +291,6 @@ int main(int argc, char* argv[]){
                         
                         char uname[16];
                         strcpy(uname, recvMsg.attribute[1].payload);
-                        //strcpy(uname, client_attribute.payload);
-                        //uname[strlen(client_attribute.payload)]='\0';
                         
                         for(int k = 0; k < clientCount; k++){
                             
