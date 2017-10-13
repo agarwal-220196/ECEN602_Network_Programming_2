@@ -73,15 +73,13 @@ int main(int argc, char* argv[]){
     //Server's address info
     struct sockaddr_in server_addr, *clients_addr;
     server_addr.sin_family = AF_INET;
-    //server_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    //server_addr.sin_port = htons(atoi(argv[2]));
-    server_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    server_addr.sin_port = htons(12345);
+    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
+    server_addr.sin_port = htons(atoi(argv[2]));
+    
     socklen_t server_addr_size = sizeof(server_addr);
     
-    //int maxClients=atoi(argv[3]);
-    int maxClients = 10;
-    
+    int maxClients=atoi(argv[3]);
+
     char received_str[str_size]; 
     char buf[4096];//Receive data from client
 
@@ -99,6 +97,7 @@ int main(int argc, char* argv[]){
         
     if(server_socket < 0 ){ 
         cout << "Could not establish connection" << endl;
+        perror("establishing");
         exit(0);
     }
     
@@ -112,9 +111,11 @@ int main(int argc, char* argv[]){
     //============bind socket to ip and port===============//
     if( bind(server_socket, (struct sockaddr* ) &server_addr, server_addr_size) < 0){
         cout << "Unable to bind socket." << endl;
-        cout << "Error number " << (int) errno << endl;
+        //cout << "Error number " << (int) errno << endl;
+        perror("binding");
         exit(0);
     }
+    
     cout << "Socket binded." << endl;
     
     clients = (struct SBCP_client_info *)malloc(maxClients*sizeof(struct SBCP_client_info));
@@ -123,7 +124,8 @@ int main(int argc, char* argv[]){
     //=============listen to the client============//
     if(listen(server_socket, 10)< 0){
         cout << "Unable to find client." << endl;
-        cout << "Error number " << (int) errno << endl;
+        //cout << "Error number " << (int) errno << endl;
+        perror("listening");
         exit(0);
     }
     cout << "Listening to the cilent..." << endl;
@@ -139,7 +141,7 @@ int main(int argc, char* argv[]){
         
         if(select(fdmax + 1, &read_fds, NULL, NULL, NULL) == -1){
             cout << "Error occurs when selecting." << endl;
-            cout << "Error number " << (int) errno << endl;
+            perror("Select");
             exit(0);
         }
         
@@ -147,7 +149,7 @@ int main(int argc, char* argv[]){
             
             if(FD_ISSET(i, &read_fds)){//Get one from existing file descriptor
             
-                if(i = server_socket){ //We get a server socket, check if there is a client want to connect or send msg.
+                if(i == server_socket){ //We get a server socket, check if there is a client want to connect or send msg.
                 
                     //Accept a new connection and add it to the clients address array clients_addr
                     socklen_t client_addr_size = sizeof(clients_addr[clientCount]);
@@ -166,7 +168,7 @@ int main(int argc, char* argv[]){
                         if(!isjoined(newclient)){
                             //We have a new client who want to join our chat room
                             //Send an ONLINE Message to all the clients except this
-                            cout << "\nServer accepted the client : %s" << clients[clientCount-1].username << endl;
+                            cout << "User " << clients[clientCount-1].username << " has joined chat room" << endl;
                             join_broadcast.header.vrsn = 3;
                             join_broadcast.header.type = 8;
                             join_broadcast.attribute[0].type = 2;
@@ -178,25 +180,18 @@ int main(int argc, char* argv[]){
         	            	        // Except the listener and ourselves
         	            	        if (j != server_socket && j != i){
         	                    	    if ((write(j,(void *) &join_broadcast,sizeof(join_broadcast))) == -1){
-					    
         	                            	perror("broadcasting join message");
         	                            }
         	                        }
         	                    }       
         	                }
-                            //ret = connfd;
                         } else {
-                            cout << "\nClient username already exists" << endl;
+                            cout << "\n User with this username has already joined, try another username." << endl;
+                            close(newclient);
                             fdmax = temp;
                             FD_CLR(newclient, &master);//clear newclient if username does not exist
                         }
-                        
-                        
                     }
-                    
-                    //Send welcome message to the connected client
-                    // string welcomeMSG = "Welcome to the Chat Server";
-                    // send(newclient, welcomeMSG.c_str(), welcomeMSG.size() + 1, 0);
                 } else{ 
                     //Here we got a existing connection, deal with data from it.
                     bytes = read(i,(struct SBCP_message *) &recvMsg,sizeof(recvMsg));
@@ -248,12 +243,10 @@ int main(int argc, char* argv[]){
                         fwdMsg.attribute[1].type=2; //get username
                         
                         char uname[16];
-                        strcpy(uname, client_attribute.payload);
-                        uname[strlen(client_attribute.payload)]='\0';
+                        strcpy(uname, recvMsg.attribute[1].payload);
+                        //strcpy(uname, client_attribute.payload);
+                        //uname[strlen(client_attribute.payload)]='\0';
                         
-                        cout << "Username is %s" << uname << endl;
-                        
-                        //Forward the message to all the clients except this
                         for(int k = 0; k < clientCount; k++){
                             
                             if(clients[k].fd == i){
@@ -261,6 +254,10 @@ int main(int argc, char* argv[]){
                                 strcpy(fwdMsg.attribute[1].payload, clients[k].username);
                             }
                         }
+                        
+                        cout << fwdMsg.attribute[1].payload <<" says: " << fwdMsg.attribute[0].payload << endl;
+                        
+                        //Forward the message to all the clients except this
                         for(int j = 0; j <= fdmax; j++){
                             //send fwdMsg to everyone
                             if(FD_ISSET(j, &master)){

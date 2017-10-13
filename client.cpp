@@ -29,11 +29,11 @@ int readMessage(int sockfd){
     nbytes=read(sockfd,(struct SBCP_message *) &serverMessage,sizeof(serverMessage));
     if(serverMessage.header.type==3){
     	if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && (serverMessage.attribute[1].payload!=NULL || serverMessage.attribute[1].payload!='\0') && serverMessage.attribute[0].type==4 && serverMessage.attribute[1].type==2){     	
-		    cout<<"Forwarded Message from" << serverMessage.attribute[1].payload<<"is" <<serverMessage.attribute[0].payload<<endl;
+		    cout<<serverMessage.attribute[1].payload<<" says: " <<serverMessage.attribute[0].payload<<endl;
 	    }
         status=0;
     }
-    else {status=1;}
+    else {}
     return status;
 }
 
@@ -48,8 +48,8 @@ void join(int sockfd, char* arg[]){
     header.type = '2';
     
     attribute.type = 2;//Username
-    attribute.length = strlen(arg[1]) + 1;
-    strcpy(attribute.payload,arg[1]);
+    attribute.length = strlen(arg[3]) + 1;
+    strcpy(attribute.payload,arg[3]);
     message.header = header;
     message.attribute[0] = attribute;
 
@@ -60,6 +60,7 @@ void join(int sockfd, char* arg[]){
     status = readMessage(sockfd); 
     if(status == 1){
         close(sockfd);
+        // sockfd=-1;
     }
 }
 
@@ -88,6 +89,7 @@ void send(int socket){
     	strcpy(Attribute.payload,temp);
     	message.attribute[0] = Attribute;
     	write(socket,(void *) &message,sizeof(message));
+    	
     }
     else{
      	cout<<"Timed out.\n"<<endl;
@@ -107,11 +109,11 @@ int main(int argc, char*argv[]){
         }
         
         //get the server add 
-        struct hostent* hret=gethostbyname(argv[2]);
+        struct hostent* hret=gethostbyname(argv[1]);
         struct sockaddr_in server_address;
         bzero(&server_address,sizeof(server_address));
         server_address.sin_family=AF_INET;
-        server_address.sin_port= htons(atoi(argv[3]));
+        server_address.sin_port= htons(atoi(argv[2]));
         memcpy(&server_address.sin_addr.s_addr, hret->h_addr,hret->h_length);
         
         //create fd_set 
@@ -123,7 +125,7 @@ int main(int argc, char*argv[]){
 	    //connect to the chatroom
 	    if(connect(sockfd,(struct sockaddr *)&server_address,sizeof(server_address))!=0)
 	    {
-	        cout<<"connection failed!"<<endl;
+	        cout<<"connection failed!" << (int) errno<<endl;
 	        exit(0);
 	    }
 	    else
@@ -135,7 +137,7 @@ int main(int argc, char*argv[]){
 	    }
 	    while(true){
 	        read_fds=master;
-	        cout<<"\n"<<endl;
+	       // cout<<"\n"<<endl;
 	        
 	        //select fail
 	        if(select(sockfd+1,&read_fds,NULL,NULL,NULL)==-1){
@@ -149,7 +151,9 @@ int main(int argc, char*argv[]){
 	        //change in stdin
 	        if(FD_ISSET(STDIN_FILENO,&read_fds)){
 	            send(sockfd);
+	            
 	        }
+	        
 	    }
 	    cout<<"chat ends"<<endl;
 	    
