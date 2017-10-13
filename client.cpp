@@ -84,7 +84,7 @@ void join(int sockfd, char* arg[]){
     sleep(1);
     status = readMessage(sockfd); 
     
-    //if username already used, close the socket.
+    //if username already used, close the socket and exit.
     if(status == 1){
         close(sockfd);
         exit(4);
