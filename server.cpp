@@ -21,16 +21,41 @@
 
 using namespace std;
 
-int clientNum = 0;
-struct SBCP_client_info *clients;
+int clientCount = 0;
+struct SBCP_client_info *clients; //assign memory to store SBCP_client_info array
 
-bool check_user_name(char user_name[]){
-    for(int i = 0; i < clientNum; i++){
-        if(!strcmp(user_name,clients[i].username)){
-            return false;
+
+//check if username does not exist
+bool username_not_exist(char user_name[]){
+    for(int i = 0; i < clientCount; i++){
+        if(strcmp(user_name,clients[i].username) == 0){
+            return false; //Username has already in list, return false.
         }
     }
-    return true;
+    return true; //If username does not exist, return true.
+}
+
+//Check if the client has already joined the chat room
+bool isjoined(int client_fd){
+    struct SBCP_message join_msg;
+    struct SBCP_attribute join_msg_attribute;
+    char user_name[16];
+    read(client_fd,(struct SBCP_message *) &join_msg,sizeof(join_msg));
+    join_msg_attribute = join_msg.attribute[0];//Get username
+    strcpy(user_name, join_msg_attribute.payload);
+    if(!username_not_exist(user_name)) //If the client with this username is in chat room
+    {
+        printf("\nClient already joined.");
+        return true;
+    }
+    else //If client with this username has never joined chat room then let him join.
+    {
+        strcpy(clients[clientCount].username, user_name);
+        clients[clientCount].fd = client_fd;
+        clients[clientCount].clientCount = clientCount;
+        clientCount += 1;
+    }
+    return false;
 }
 
 
@@ -42,11 +67,11 @@ int main(int argc, char* argv[]){
     //5. Clean client's resources if left.
     
     //SBCP message
-    struct SBCP_message recvMsg, fwdMsg, Join_broadcast, Leave_broadcast;
+    struct SBCP_message recvMsg, fwdMsg, join_broadcast, leave_broadcast;
     struct SBCP_attribute client_attribute;
     
     //Server's address info
-    struct sockaddr_in server_addr;
+    struct sockaddr_in server_addr, *clients_addr;
     server_addr.sin_family = AF_INET;
     //server_addr.sin_addr.s_addr = inet_addr(argv[1]);
     //server_addr.sin_port = htons(atoi(argv[2]));
@@ -91,6 +116,10 @@ int main(int argc, char* argv[]){
         exit(0);
     }
     cout << "Socket binded." << endl;
+    
+    clients = (struct SBCP_client_info *)malloc(maxClients*sizeof(struct SBCP_client_info));
+    clients_addr = (struct sockaddr_in *)malloc(maxClients*sizeof(struct sockaddr_in));
+    
     //=============listen to the client============//
     if(listen(server_socket, 10)< 0){
         cout << "Unable to find client." << endl;
@@ -103,67 +132,156 @@ int main(int argc, char* argv[]){
     
     FD_SET(server_socket, &master); // Add server_socket to master set.
     int fdmax = server_socket; //numfds should be highest file discriptor + 1
+    int temp; //Store value of fdmax temporarily.
     
     while(true){
         read_fds = master; // Copy master.
         
-        int socketnum = select(fdmax + 1, &read_fds, NULL, NULL, NULL);
-        
-        if(socketnum == -1){
+        if(select(fdmax + 1, &read_fds, NULL, NULL, NULL) == -1){
             cout << "Error occurs when selecting." << endl;
             cout << "Error number " << (int) errno << endl;
             exit(0);
         }
         
-        for(int i = 0; i <= fdmax; i++){
+        for(int i = 0; i <= fdmax; i++){ //loop through file descriptor
             
-            if(FD_ISSET(i, &read_fds)){//Get one 
+            if(FD_ISSET(i, &read_fds)){//Get one from existing file descriptor
             
-                if(i = server_socket){
-                    //Accept a new connection
-                    socklen_t client_addr_size = sizeof(client_addr);
-                    newclient = accept(server_socket, (struct sockaddr *)&client_addr, &client_addr_size);
+                if(i = server_socket){ //We get a server socket, check if there is a client want to connect or send msg.
+                
+                    //Accept a new connection and add it to the clients address array clients_addr
+                    socklen_t client_addr_size = sizeof(clients_addr[clientCount]);
+                    newclient = accept(server_socket, (struct sockaddr *)&clients_addr[clientCount], &client_addr_size);
                     
                     if(newclient == -1){
                         cout<< "Error occurs when accepting new clients" <<endl;
                         cout << "Error number " << (int) errno << endl;
                     }else {
+                        temp = fdmax;
                         //Add new connection to the list of connected clients
                         FD_SET(newclient, &master);
                         if(newclient > fdmax){ //track max fd
                             fdmax = newclient;
                         }
+                        if(!isjoined(newclient)){
+                            //We have a new client who want to join our chat room
+                            //Send an ONLINE Message to all the clients except this
+                            cout << "\nServer accepted the client : %s" << clients[clientCount-1].username << endl;
+                            join_broadcast.header.vrsn = 3;
+                            join_broadcast.header.type = 8;
+                            join_broadcast.attribute[0].type = 2;
+                            strcpy(join_broadcast.attribute[0].payload,clients[clientCount-1].username);
+                            
+                            for(int j = 0; j <= fdmax; j++){ //Loop again the file descriptors and broadcast
+        	            	    if (FD_ISSET(j, &master)) 
+        	            	    {
+        	            	        // Except the listener and ourselves
+        	            	        if (j != server_socket && j != i){
+        	                    	    if ((write(j,(void *) &join_broadcast,sizeof(join_broadcast))) == -1){
+					    
+        	                            	perror("broadcasting join message");
+        	                            }
+        	                        }
+        	                    }       
+        	                }
+                            //ret = connfd;
+                        } else {
+                            cout << "\nClient username already exists" << endl;
+                            fdmax = temp;
+                            FD_CLR(newclient, &master);//clear newclient if username does not exist
+                        }
+                        
+                        
                     }
                     
                     //Send welcome message to the connected client
-                    string welcomeMSG = "Welcome to the Chat Server";
-                    send(newclient, welcomeMSG.c_str(), welcomeMSG.size() + 1, 0);
-                } else{
-                    memset(buf, 0, 4096);
-                    bytes = recv(newclient, buf, 4096,0); //Receive message from ith descriptor in master
-                    if(bytes == 0){  //The client quit the chat server, close the socket
-                        close(newclient);
-                        FD_CLR(i, &master); //Remove from master set
-                    } else{
-                        //We got some data and send messages to other clients
-                        for(int j = 0; j < fdmax; j++){
-                            if(FD_ISSET(j, &master)){
-                                //Except the server and ourselves
-                                if(j != server_socket && j != i){
-                                    if(send(j, buf, bytes, 0) == -1){
-                                        cout << "Error occurs when broadcasting data!" << endl;
-                                        perror("send");
-                                    }//End of sending data
-                                }//End of broadcasting
+                    // string welcomeMSG = "Welcome to the Chat Server";
+                    // send(newclient, welcomeMSG.c_str(), welcomeMSG.size() + 1, 0);
+                } else{ 
+                    //Here we got a existing connection, deal with data from it.
+                    bytes = read(i,(struct SBCP_message *) &recvMsg,sizeof(recvMsg));
+                    
+                    if(bytes <= 0){
+                        if (bytes == 0){
+                            for(int k = 0; k < clientCount; k++){
+                                if(clients[k].fd == i){
+                                    leave_broadcast.attribute[0].type = 2;
+                                    strcpy(leave_broadcast.attribute[0].payload, clients[k].username);
+                                }
                             }
-                        }//End of loop through file descriptor
-                    }
+                            
+                            //Client closed the connection
+                            cout << "User" << leave_broadcast.attribute[0].payload << " has leave the chat room." << endl; 
+                            
+                            leave_broadcast.header.vrsn=3;
+                            leave_broadcast.header.type=6;
+                            
+                            for(int j = 0; j <= fdmax; j++){
+                                //broadcasting
+                                if(FD_ISSET(j, &master)){
+                                    //except the server and itself
+                                    if(j != server_socket && j != i){
+                                        //send leaving msg
+                                        if((write(j, (void*)&leave_broadcast, sizeof(leave_broadcast))) == -1){
+                                            perror("broadcasting leaving msg");
+                                        }
+                                    }
+                                }
+                            }
+                            
+                        } else if(bytes < 0){
+                            perror("receiving msg");
+                        } 
+                        close(i);
+                        FD_CLR(i, &master);//Remove from master set
+                        for(int x = i;x < clientCount;x++){
+                            
+    				        clients[x]=clients[x+1];
+    				        
+                        }
+                        clientCount--;
+                    } else {
+                        //bytes > 0, we received some data from client
+                        client_attribute = recvMsg.attribute[0];//get message
+                        fwdMsg = recvMsg;
+                        fwdMsg.header.type = 3;
+                        fwdMsg.attribute[1].type=2; //get username
+                        
+                        char uname[16];
+                        strcpy(uname, client_attribute.payload);
+                        uname[strlen(client_attribute.payload)]='\0';
+                        
+                        cout << "Username is %s" << uname << endl;
+                        
+                        //Forward the message to all the clients except this
+                        for(int k = 0; k < clientCount; k++){
+                            
+                            if(clients[k].fd == i){
+                                
+                                strcpy(fwdMsg.attribute[1].payload, clients[k].username);
+                            }
+                        }
+                        for(int j = 0; j <= fdmax; j++){
+                            //send fwdMsg to everyone
+                            if(FD_ISSET(j, &master)){
+                                //except the server and itself
+                                if(j != server_socket && j != i){
+                                    if((write(j, (void *) &fwdMsg, bytes))){
+                                        perror("Forwarding message");
+                                    }
+                                }
+                            }
+                        }
+                    } //End fowarding messages
                 }//End dealing with data from client
             }//End got new connection
         }//End loop through file descriptors
     }//End of while loop
 
+    close(server_socket);
     return 0;
     
     
 }
+
+

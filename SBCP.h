@@ -11,7 +11,7 @@ struct SBCP_header{
 struct SBCP_attribute{
     int type;
     int length;
-    char payload[562];
+    char payload[512];
 };
 
 //Structure for SBCP message
@@ -19,11 +19,12 @@ struct SBCP_message{
     struct SBCP_header header;
     struct SBCP_attribute attribute[2];
 };
+
 //Structure for saving client's information
 struct SBCP_client_info{
     char username[16];
     int fd;
-    int clientNum;
+    int clientCount;
 };
 
 #endif
