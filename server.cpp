@@ -25,7 +25,7 @@ int clientCount = 0;
 struct SBCP_client_info *clients; //assign memory to store SBCP_client_info array
 
 //send ACK to allow join of client
-void sendACK(int connfd){
+void sendACK(int client_fd){
 
     struct SBCP_message ACK_msg;
     char temp[180];
@@ -37,7 +37,7 @@ void sendACK(int connfd){
     // Only works to '9'
     temp[0] = (char)(((int)'0')+ clientCount);
     temp[1] = ' ';
-    temp[2] = '\0';
+    // temp[2] = '\0';
     //copy username to the list
     for(int i =0; i<clientCount-1; i++)
     {
@@ -48,11 +48,11 @@ void sendACK(int connfd){
     ACK_msg.attribute[0].length = strlen(temp)+1;
     strcpy(ACK_msg.attribute[0].payload, temp);
 
-    write(connfd,(void *) &ACK_msg,sizeof(ACK_msg));
+    write(client_fd,(void *) &ACK_msg,sizeof(ACK_msg));
 }
 
 //send NAK to client, to deny connection ( when username already joined)
-void sendNAK(int connfd){
+void sendNAK(int client_fd){
 
     struct SBCP_message NAK_msg;
     char temp[180];
@@ -67,9 +67,9 @@ void sendNAK(int connfd){
     NAK_msg.attribute[0].length = strlen(temp);
     strcpy(NAK_msg.attribute[0].payload, temp);
 
-    write(connfd,(void *) &NAK_msg,sizeof(NAK_msg));
+    write(client_fd,(void *) &NAK_msg,sizeof(NAK_msg));
 
-    close(connfd);
+    close(client_fd);
 
 }
 
@@ -91,6 +91,7 @@ bool isjoined(int client_fd){
     read(client_fd,(struct SBCP_message *) &join_msg,sizeof(join_msg));
     join_msg_attribute = join_msg.attribute[0];//Get username
     strcpy(user_name, join_msg_attribute.payload);
+    
     if(!username_not_exist(user_name)) //If the client with this username is in chat room
     {
         cout << "Username already exists!" << endl;
@@ -104,35 +105,39 @@ bool isjoined(int client_fd){
         clients[clientCount].clientCount = clientCount;
         clientCount += 1;
         sendACK(client_fd);
+        
     }
     return false;
 }
 
 
 int main(int argc, char* argv[]){
-    //1. Make select run. --Done!
-    //2. Input Ip, port # and number of maximum clients from command line--Done!
-    //3. Forward receive messages from clients and forward them.--Done!
-    //4. Only accept clint with JOIN SBCP msg and unique username.
-    //5. Clean client's resources if left.
-    
     //SBCP message
     struct SBCP_message recvMsg, fwdMsg, join_broadcast, leave_broadcast;
     struct SBCP_attribute client_attribute;
     
     //Server's address info
     struct sockaddr_in server_addr, *clients_addr;
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    server_addr.sin_port = htons(atoi(argv[2]));
-    
-    socklen_t server_addr_size = sizeof(server_addr);
+    // server_addr.sin_family = AF_INET;
+    // server_addr.sin_addr.s_addr = inet_addr(argv[1]);
+    // server_addr.sin_port = htons(atoi(argv[2]));
+    // socklen_t server_addr_size = sizeof(server_addr);
     
     int maxClients=atoi(argv[3]);
-
-    char received_str[str_size]; 
-    char buf[4096];//Receive data from client
-
+    
+    int status;
+    struct addrinfo hints;
+    struct addrinfo *servinfo; //point to the results
+    memset(&hints, 0, sizeof hints); // make sure the struct is empty
+    hints.ai_family = AF_UNSPEC;     // don't care IPv4 or IPv6
+    hints.ai_socktype = SOCK_STREAM; // TCP stream sockets
+    
+    if ((status = getaddrinfo(argv[1], argv[2] , &hints, &servinfo)) != 0) {
+        fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        exit(1);
+    }
+    
+    
     fd_set master;// Create a master set of file discriptor.
     fd_set read_fds;  // temp file descriptor list for select()
     FD_ZERO (&master);// Clear all entries in set.
@@ -143,7 +148,8 @@ int main(int argc, char* argv[]){
     int bytes = 0; // Number of bytes received.
     
     //==============initialize socket==================//
-    int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    //int server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    int server_socket = socket(servinfo->ai_family, servinfo->ai_socktype, servinfo->ai_protocol);
         
     if(server_socket < 0 ){ 
         cout << "Could not establish connection" << endl;
@@ -159,7 +165,7 @@ int main(int argc, char* argv[]){
     cout << "Server socket established." << endl;
     
     //============bind socket to ip and port===============//
-    if( bind(server_socket, (struct sockaddr* ) &server_addr, server_addr_size) < 0){
+    if( bind(server_socket, servinfo->ai_addr, servinfo->ai_addrlen) < 0){
         cout << "Unable to bind socket." << endl;
         perror("binding");
         exit(0);
@@ -207,36 +213,46 @@ int main(int argc, char* argv[]){
                         cout<< "Error occurs when accepting new clients" <<endl;
                         cout << "Error number " << (int) errno << endl;
                     }else {
+                        
                         temp = fdmax;
-                        //Add new connection to the list of connected clients
-                        FD_SET(newclient, &master);
+                        
+                        FD_SET(newclient, &master); //Add new connection to the list of connected clients
+                        
                         if(newclient > fdmax){ //track max fd
                             fdmax = newclient;
                         }
-                        if(!isjoined(newclient)){
-                            //We have a new client who want to join our chat room
-                            //Send an ONLINE Message to all the clients except this
-                            cout << "User " << clients[clientCount-1].username << " has joined chat room" << endl;
-                            join_broadcast.header.vrsn = 3;
-                            join_broadcast.header.type = 8;
-                            join_broadcast.attribute[0].type = 2;
-                            strcpy(join_broadcast.attribute[0].payload,clients[clientCount-1].username);
-                            
-                            for(int j = 0; j <= fdmax; j++){ //Loop again the file descriptors and broadcast
-        	            	    if (FD_ISSET(j, &master)) 
-        	            	    {
-        	            	        // Except the server and itself
-        	            	        if (j != server_socket && j != newclient){
-        	                    	    if ((write(j,(void *) &join_broadcast,sizeof(join_broadcast))) == -1){
-        	                            	perror("broadcasting join message");
-        	                            }
-        	                        }
-        	                    }       
-        	                }
-                        } else {
-                            close(newclient);
+                        
+                        if(clientCount + 1 > maxClients){
+                            cout << "Too many users! Connection denied." << endl;
                             fdmax = temp;
                             FD_CLR(newclient, &master);//clear newclient if username does not exist
+                            sendNAK(newclient);
+                        } else {
+                            if(!isjoined(newclient)){
+                                //We have a new client who want to join our chat room
+    
+                                //Send an ONLINE Message to all the clients except this
+                                cout << "User " << clients[clientCount-1].username << " has joined chat room" << endl;
+                                join_broadcast.header.vrsn = 3;
+                                join_broadcast.header.type = 8;    
+                                join_broadcast.attribute[0].type = 2;
+                                strcpy(join_broadcast.attribute[0].payload,clients[clientCount-1].username);
+                                
+                                for(int j = 0; j <= fdmax; j++){ //Loop again the file descriptors and broadcast
+            	            	    if (FD_ISSET(j, &master)) 
+            	            	    {
+            	            	        // Except the server and itself
+            	            	        if (j != server_socket && j != newclient){
+            	                    	    if ((write(j,(void *) &join_broadcast,sizeof(join_broadcast))) == -1){
+            	                            	perror("broadcasting join message");
+            	                            }
+            	                        }
+            	                    }       
+            	                }
+                            } else {
+                                fdmax = temp;
+                                FD_CLR(newclient, &master);//clear newclient if username does not exist
+                            }
                         }
                     }
                 } else{ 
@@ -288,7 +304,7 @@ int main(int argc, char* argv[]){
                         fwdMsg = recvMsg;
                         fwdMsg.header.type = 3;
                         fwdMsg.attribute[1].type=2; //get username
-                        
+                        fwdMsg.attribute[0].length = recvMsg.attribute[0].length;
                         char uname[16];
                         strcpy(uname, recvMsg.attribute[1].payload);
                         

@@ -26,12 +26,22 @@ int readMessage(int sockfd){
     struct SBCP_message serverMessage;
     int status = 0;
     int nbytes=0;
-    nbytes=read(sockfd,(struct SBCP_message *) &serverMessage,sizeof(serverMessage));
+    nbytes = read(sockfd,(struct SBCP_message *) &serverMessage,sizeof(serverMessage));
+    int count = 0;
     
-    //read the username and message
+    //read the username and message and compare the length of sent and received, if not same, discard.
     if(serverMessage.header.type==3){
-    	if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && (serverMessage.attribute[1].payload!=NULL || serverMessage.attribute[1].payload!='\0') && serverMessage.attribute[0].type==4 && serverMessage.attribute[1].type==2){     	
-		    cout<<serverMessage.attribute[1].payload<<" says: " <<serverMessage.attribute[0].payload<<endl;
+    	if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && (serverMessage.attribute[1].payload!=NULL || serverMessage.attribute[1].payload!='\0') && serverMessage.attribute[0].type==4 && serverMessage.attribute[1].type==2){  
+    	    for(int i = 0; i < sizeof(serverMessage.attribute[0].payload); i++){
+    	        if(serverMessage.attribute[0].payload[i]=='\0') {
+    	            count = i-1;
+    	            break;
+    	        }
+    	    }
+    	    if(count == serverMessage.attribute[0].length){
+    	        cout<<serverMessage.attribute[1].payload<<" says: " <<serverMessage.attribute[0].payload<<endl;
+    	    }
+		    
 	    }
         status=0;
     }
@@ -51,6 +61,13 @@ int readMessage(int sockfd){
         }
         status=0;
     }
+    
+    // if(serverMessage.header.type==7){    	
+	   // if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && serverMessage.attribute[0].type==4){
+    //         cout<<"ACK Message from Server is "<< serverMessage.attribute[0].payload <<endl;
+    //     }
+    //     status=0;
+    // }
     
     if(serverMessage.header.type==8){
 	    if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && serverMessage.attribute[0].type==2){
@@ -118,10 +135,11 @@ void send(int socket){
         if(nread > 0){
 	        temp[nread] = '\0';
         }
-    
+       
     	Attribute.type = 4;//message;
     	strcpy(Attribute.payload,temp);
     	message.attribute[0] = Attribute;
+    	message.attribute[0].length = nread-1;
     	write(socket,(void *) &message,sizeof(message));
     	
     }
