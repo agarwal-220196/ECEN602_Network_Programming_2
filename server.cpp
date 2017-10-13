@@ -177,7 +177,7 @@ int main(int argc, char* argv[]){
                             for(int j = 0; j <= fdmax; j++){ //Loop again the file descriptors and broadcast
         	            	    if (FD_ISSET(j, &master)) 
         	            	    {
-        	            	        // Except the listener and ourselves
+        	            	        // Except the server and itself
         	            	        if (j != server_socket && j != i){
         	                    	    if ((write(j,(void *) &join_broadcast,sizeof(join_broadcast))) == -1){
         	                            	perror("broadcasting join message");
@@ -186,7 +186,9 @@ int main(int argc, char* argv[]){
         	                    }       
         	                }
                         } else {
-                            cout << "\n User with this username has already joined, try another username." << endl;
+                            cout << "User with username "<< clients[clientCount-1].username <<" has already joined, try another username." << endl;
+                            
+                            
                             close(newclient);
                             fdmax = temp;
                             FD_CLR(newclient, &master);//clear newclient if username does not exist
@@ -202,11 +204,14 @@ int main(int argc, char* argv[]){
                                 if(clients[k].fd == i){
                                     leave_broadcast.attribute[0].type = 2;
                                     strcpy(leave_broadcast.attribute[0].payload, clients[k].username);
+                                    
+                                    //leave_broadcast.attribute[1].type = 2;
+                                    //strcpy(leave_broadcast.attribute[1].payload, clients[k].username);
                                 }
                             }
                             
                             //Client closed the connection
-                            cout << "User" << leave_broadcast.attribute[0].payload << " has leave the chat room." << endl; 
+                            cout << "User " << leave_broadcast.attribute[0].payload << " has left the chat room." << endl; 
                             
                             leave_broadcast.header.vrsn=3;
                             leave_broadcast.header.type=6;

@@ -33,7 +33,21 @@ int readMessage(int sockfd){
 	    }
         status=0;
     }
-    else {}
+    
+    if(serverMessage.header.type==6){
+	    if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && serverMessage.attribute[0].type==2){
+           	cout<<serverMessage.attribute[0].payload<<" is now OFFLINE" <<endl;
+        }
+        status=0;
+    }
+    
+    if(serverMessage.header.type==8){
+	    if((serverMessage.attribute[0].payload!=NULL || serverMessage.attribute[0].payload!='\0') && serverMessage.attribute[0].type==2){
+            cout<<serverMessage.attribute[0].payload<<" is now ONLINE" <<endl;
+        }
+        status=0;
+    }
+    
     return status;
 }
 
